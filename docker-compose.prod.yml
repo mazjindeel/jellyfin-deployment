@@ -1,0 +1,15 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: always
+    ports:
+      - "8096:8096"
+    devices:
+      - /dev/dri:/dev/dri
+    volumes:
+      - ${HOMELAB_DATA:-/home/maz/homelab/data/jellyfin}/config:/config
+      - ${HOMELAB_DATA:-/home/maz/homelab/data/jellyfin}/cache:/cache
+      - ${MEDIA_PATH:-/home/maz/stuff/media}:/media:ro
+    environment:
+      TZ: ${TZ:-America/Anchorage}

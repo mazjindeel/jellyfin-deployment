@@ -1,0 +1,15 @@
+[Unit]
+Description=Jellyfin (Docker Compose)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=%h/homelab/jellyfin-deployment
+ExecStart=/usr/bin/docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+ExecStop=/usr/bin/docker compose --env-file .env.prod -f docker-compose.prod.yml down
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target
