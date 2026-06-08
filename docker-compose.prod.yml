@@ -3,6 +3,8 @@ services:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
     restart: always
+    networks:
+      - homelab
     ports:
       - "8096:8096"
     devices:
@@ -13,3 +15,7 @@ services:
       - ${MEDIA_PATH:-/home/maz/stuff/media}:/media:ro
     environment:
       TZ: ${TZ:-America/Anchorage}
+
+networks:
+  homelab:
+    external: true

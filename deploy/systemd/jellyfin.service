@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=%h/homelab/jellyfin-deployment
+ExecStartPre=%h/homelab/home-server/scripts/ensure-homelab-network.sh
 ExecStart=/usr/bin/docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ExecStop=/usr/bin/docker compose --env-file .env.prod -f docker-compose.prod.yml down
 TimeoutStartSec=300
