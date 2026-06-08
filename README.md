@@ -16,6 +16,7 @@ Shared infrastructure (nginx, TLS, DDNS, recovery docs) lives in **[home-server]
 | `scripts/organize-media.py` | Organize `~/stuff/media` into Jellyfin-friendly paths (dry-run by default) |
 | `scripts/simulate-from-paths.py` | Dry-run the organizer from a `find` listing (no files required) |
 | `scripts/README.md` | **Script docs** — usage, architecture, extension guide for agents |
+| `.cursor/skills/process-media-downloads/` | **Cursor skill** — completed-downloads → library workflow (dry-run → approve → apply) |
 | `FINAL_PLAN.md` | Last reviewed dry-run plan for the full library |
 
 ## Production (on ThinkPad)
