@@ -3,9 +3,9 @@ name: process-media-downloads
 description: >-
   Processes completed Transmission downloads on the ThinkPad Jellyfin homelab:
   inventory ~/stuff/downloads/completed, dry-run organize-media.py, move
-  normalized files into ~/stuff/media, remove processed torrents from
-  Transmission, update parsing rules in jellyfin-deployment, and walk the user
-  through dry-run review before apply.
+  normalized files into ~/stuff/media (video) and ~/stuff/audiobooks (books),
+  remove processed torrents from Transmission, update parsing rules in
+  jellyfin-deployment, and walk the user through dry-run review before apply.
   Use when organizing new downloads, normalizing media names, running
   organize-media.py, or preparing Jellyfin library imports on thinkpad.
 ---
@@ -22,7 +22,8 @@ Read first: [scripts/README.md](../../scripts/README.md) (CLI, architecture, ext
 |---|---|
 | ThinkPad SSH | `maz@192.168.1.50` |
 | Completed downloads | `~/stuff/downloads/completed/` |
-| Jellyfin library | `~/stuff/media/` (container `/media`) |
+| Jellyfin video library | `~/stuff/media/` (container `/media`) |
+| Jellyfin audiobook library | `~/stuff/audiobooks/` (container `/audiobooks`) |
 | Transmission container | `transmission-vpn` |
 | Script (ThinkPad) | `~/homelab/jellyfin-deployment/scripts/organize-media.py` |
 | Script (dev) | `~/workspace/jellyfin-deployment/scripts/organize-media.py` |
@@ -55,12 +56,12 @@ Post-apply cleanup in `completed/` and Transmission removal **is part of the app
 On ThinkPad, list what arrived:
 
 ```bash
-ssh maz@192.168.1.50 'find ~/stuff/downloads/completed -type f \( -iname "*.mkv" -o -iname "*.mp4" -o -iname "*.avi" -o -iname "*.m4v" -o -iname "*.srt" \) -print | head -200'
+ssh maz@192.168.1.50 'find ~/stuff/downloads/completed -type f \( -iname "*.mkv" -o -iname "*.mp4" -o -iname "*.avi" -o -iname "*.m4v" -o -iname "*.srt" -o -iname "*.m4b" -o -iname "*.mp3" -o -iname "*.m4a" -o -iname "*.flac" -o -iname "*.aac" \) -print | head -200'
 ssh maz@192.168.1.50 'du -sh ~/stuff/downloads/completed/* 2>/dev/null | sort -hr | head -30'
 ssh maz@192.168.1.50 'ls -la ~/stuff/downloads/completed/'
 ```
 
-Summarize for the human: folder names, video count, anything that looks non-media (archives, nfo-only, samples). Note if folders are `root:root` (Transmission missing `PUID`/`PGID` — see [reference.md](reference.md)).
+Summarize for the human: folder names, video count, audiobook count, anything that looks non-media (archives, nfo-only, samples). Note if folders are `root:root` (Transmission missing `PUID`/`PGID` — see [reference.md](reference.md)).
 
 ### Phase 2 — Sync script
 
@@ -82,12 +83,13 @@ ssh maz@192.168.1.50 'python3 ~/homelab/jellyfin-deployment/scripts/organize-med
 
 ### Phase 3 — Dry-run
 
-**Always dry-run first.** Source = completed; destination = library:
+**Always dry-run first.** Source = completed; destinations = video + audiobook libraries:
 
 ```bash
 ssh maz@192.168.1.50 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py \
   ~/stuff/downloads/completed \
   --output ~/stuff/media \
+  --audiobooks-output ~/stuff/audiobooks \
   --save-plan ~/stuff/downloads/completed-plan.json \
   2>&1 | tee ~/stuff/downloads/completed-dry-run.log'
 ```
@@ -106,7 +108,7 @@ Present using [reference.md](reference.md) **Dry-run summary** template. Highlig
 - **Conflicts** (must be 0 before apply — two sources want same destination)
 - **Unclassified** (needs manual decision or script rule)
 - **Skipped** (samples/junk — removed in Phase 7 with torrent cleanup)
-- Representative moves (show → season → filename)
+- Representative moves (show → season → filename; audiobook → Author/Book)
 
 **Stop and wait** for explicit human approval or change requests. Do not suggest apply until conflicts = 0 and unclassified are resolved or explicitly accepted as manual follow-up.
 
@@ -120,6 +122,7 @@ When dry-run shows parse gaps, edit on the dev machine:
 | Show folder consolidation | `canonicalize_show_metadata()` |
 | Special title extraction | `parse_tv_file()` branch |
 | Movie / extras edge case | `parse_movie_file()` / `parse_tv_extras_file()` |
+| Audiobook parse gap | `parse_audiobook_from_label()` / `parse_audiobook_release()` |
 
 Conventions (from `scripts/README.md`):
 
@@ -153,6 +156,7 @@ Apply:
 ssh maz@192.168.1.50 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py \
   ~/stuff/downloads/completed \
   --output ~/stuff/media \
+  --audiobooks-output ~/stuff/audiobooks \
   --apply \
   --cleanup-empty \
   2>&1 | tee ~/stuff/downloads/completed-apply.log'
@@ -183,7 +187,7 @@ ssh maz@192.168.1.50 'ls -la ~/stuff/downloads/completed/'
 
 Non-zero video count means unclassified items or partial apply failure.
 
-**3. Jellyfin:** remind human to scan the `/media` library (Dashboard → Libraries → Scan).
+**3. Jellyfin:** remind human to scan **both** libraries — `/media` (video) and `/audiobooks` (books).
 
 ## In-place library tidy (optional)
 
@@ -198,7 +202,7 @@ Same dry-run → approve → apply gate applies. No Transmission cleanup (source
 
 ## Standard user prompt
 
-> Process my completed downloads for Jellyfin using the **process-media-downloads** skill. On the ThinkPad, inventory `~/stuff/downloads/completed`, dry-run `organize-media.py` into `~/stuff/media`, walk me through the plan, and only apply after I approve. Update the normalization script if anything is unclassified.
+> Process my completed downloads for Jellyfin using the **process-media-downloads** skill. On the ThinkPad, inventory `~/stuff/downloads/completed`, dry-run `organize-media.py` into `~/stuff/media` and `~/stuff/audiobooks`, walk me through the plan, and only apply after I approve. Update the normalization script if anything is unclassified.
 
 ## Additional resources
 

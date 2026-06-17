@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Organize TV shows and movies for Jellyfin / Plex.
+Organize TV shows, movies, and audiobooks for Jellyfin / Plex.
 
 Default behavior is dry-run: prints planned moves/renames without touching files.
 Use --apply to execute. Always review the plan first.
@@ -11,13 +11,15 @@ Recommended layout (what this script targets):
     The Office (2005)/
       Season 01/
         S01E01 - Pilot.mkv
-        S01E02 - Diversity Day.mkv
-      Season 02/
-        S02E01.mkv
 
   Movies/
     The Matrix (1999)/
       The Matrix (1999).mkv
+
+  Audiobooks (Author/Book at library root — no extra Audiobooks/ tier):
+    Matt Dinniman/
+      Dungeon Crawler Carl/
+        Dungeon Crawler Carl.m4b
 
 Episode filenames drop the show name (redundant inside the show folder) but keep
 SxxEyy so Jellyfin/Plex can match metadata reliably. Use --minimal-names for
@@ -38,7 +40,16 @@ from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
 VIDEO_EXTENSIONS = {".mkv", ".mp4", ".avi", ".m4v", ".wmv", ".mov", ".ts", ".m2ts"}
+AUDIOBOOK_EXTENSIONS = {".m4b", ".mp3", ".m4a", ".aac", ".flac", ".opus"}
 SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".sub", ".idx", ".vtt"}
+COVER_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+COVER_STEMS = frozenset({"cover", "folder", "poster"})
+AUDIOBOOK_JUNK_PARENS_RE = re.compile(
+    r"\s*\((?:Audiobook|Fiction|Unabridged|Abridged|Sci-Fi|Fantasy|Horror|Non-Fiction)\)\s*",
+    re.IGNORECASE,
+)
+SERIES_INDEX_PARENS_RE = re.compile(r"\s*\([^)]*\d+\)\s*$")
+BY_AUTHOR_RE = re.compile(r"\s+by\s+", re.IGNORECASE)
 
 # TV episode patterns — explicit only (no bare NNN; avoids x265/H264 false positives).
 # Order matters: more specific patterns are tried first.
@@ -97,6 +108,7 @@ AVATAR_SHOW = "Avatar: The Last Airbender"
 SEAL_TEAM_SHOW = "SEAL Team"
 BILLIONS_SHOW = "Billions"
 GAME_OF_THRONES_SHOW = "Game of Thrones"
+KORRA_SHOW = "The Legend of Korra"
 
 SEASON_IN_PATH_RE = re.compile(r"season\s*(\d{1,2})", re.IGNORECASE)
 SEASON_FOLDER_RE = re.compile(r"(?:^|[\.\s_-])[Ss](\d{1,2})(?:[\.\s_-]|$)")
@@ -315,6 +327,11 @@ def canonicalize_show_metadata(
     ):
         return GAME_OF_THRONES_SHOW, None
 
+    if re.search(r"\bthe\s+legend\s+of\s+korra\b", show, re.IGNORECASE) or re.search(
+        r"legend[\s._-]*of[\s._-]*korra", blob, re.IGNORECASE
+    ):
+        return KORRA_SHOW, None
+
     return show, year
 
 
@@ -427,12 +444,6 @@ def infer_language(filename: str) -> str:
         if pattern.search(filename):
             return code
     return "en"
-
-
-def iter_video_files(root: Path) -> Iterator[Path]:
-    for path in root.rglob("*"):
-        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS:
-            yield path
 
 
 def infer_show_from_path(path: Path, library_root: Path) -> tuple[str, Optional[int]]:
@@ -568,6 +579,227 @@ class MovieInfo:
     title: str
     year: Optional[int]
     relative_path: Optional[Path] = None
+
+
+@dataclass(frozen=True)
+class AudiobookInfo:
+    author: str
+    title: str
+
+
+def is_video_file(path: Path) -> bool:
+    return path.suffix.lower() in VIDEO_EXTENSIONS
+
+
+def is_audiobook_file(path: Path) -> bool:
+    return path.suffix.lower() in AUDIOBOOK_EXTENSIONS
+
+
+def release_unit_for(path: Path, source_root: Path) -> Path:
+    """Each immediate child of source_root (file or folder) is one release unit."""
+    rel = path.relative_to(source_root)
+    if len(rel.parts) == 1:
+        return path
+    return source_root / rel.parts[0]
+
+
+def strip_audiobook_junk(text: str) -> str:
+    text = AUDIOBOOK_JUNK_PARENS_RE.sub(" ", text)
+    text = BRACKET_TAG_RE.sub("", text)
+    text = strip_quality_tags(text)
+    text = clean_title(text)
+    return text.strip()
+
+
+def normalize_audiobook_title(title: str) -> str:
+    title = strip_audiobook_junk(title)
+    title = SERIES_INDEX_PARENS_RE.sub("", title).strip()
+    if title.lower().startswith("carls "):
+        title = "Carl's " + title[6:]
+    return title.strip()
+
+
+def normalize_audiobook_author(author: str) -> str:
+    author = strip_audiobook_junk(author)
+    return author.strip()
+
+
+def parse_audiobook_from_label(label: str) -> Optional[AudiobookInfo]:
+    """Parse author/title from a release folder name or filename stem."""
+    text = label.strip()
+    if Path(text).suffix.lower() in AUDIOBOOK_EXTENSIONS:
+        text = Path(text).stem
+    if not text:
+        return None
+
+    by_parts = BY_AUTHOR_RE.split(text)
+    if len(by_parts) >= 2:
+        title = normalize_audiobook_title(by_parts[0])
+        author = normalize_audiobook_author(by_parts[-1])
+        if title and author:
+            return AudiobookInfo(author=author, title=title)
+
+    dash_parts = [part.strip() for part in text.split(" - ")]
+    if len(dash_parts) >= 3 and re.fullmatch(r"\d{4}", dash_parts[1]):
+        author = normalize_audiobook_author(dash_parts[0])
+        title = normalize_audiobook_title(" - ".join(dash_parts[2:]))
+        if author and title:
+            return AudiobookInfo(author=author, title=title)
+
+    if len(dash_parts) == 2:
+        author = normalize_audiobook_author(dash_parts[0])
+        title = normalize_audiobook_title(dash_parts[1])
+        if author and title:
+            return AudiobookInfo(author=author, title=title)
+
+    title = normalize_audiobook_title(text)
+    if title:
+        return AudiobookInfo(author="Unknown Author", title=title)
+    return None
+
+
+def parse_audiobook_release(unit: Path, source_root: Path) -> Optional[AudiobookInfo]:
+    if unit.is_file():
+        return parse_audiobook_from_label(unit.stem)
+
+    rel_parts = unit.relative_to(source_root).parts
+    if len(rel_parts) >= 3:
+        author = normalize_audiobook_author(rel_parts[0])
+        title = normalize_audiobook_title(rel_parts[1])
+        if author and title:
+            return AudiobookInfo(author=author, title=title)
+
+    return parse_audiobook_from_label(unit.name)
+
+
+def audiobook_folder_name(name: str) -> str:
+    return strip_audiobook_junk(name)
+
+
+def destination_for_audiobook(
+    output_root: Path,
+    info: AudiobookInfo,
+    filename: str,
+) -> Path:
+    author_dir = audiobook_folder_name(info.author)
+    title_dir = audiobook_folder_name(info.title)
+    return output_root / author_dir / title_dir / filename
+
+
+def iter_audiobook_files(root: Path) -> Iterator[Path]:
+    for path in root.rglob("*"):
+        if path.is_file() and is_audiobook_file(path):
+            yield path
+
+
+def iter_video_files(root: Path) -> Iterator[Path]:
+    for path in root.rglob("*"):
+        if path.is_file() and is_video_file(path):
+            yield path
+
+
+def is_cover_sidecar(path: Path) -> bool:
+    if path.suffix.lower() not in COVER_IMAGE_EXTENSIONS:
+        return False
+    return path.stem.lower() in COVER_STEMS
+
+
+def iter_cover_sidecars(unit: Path, source_root: Path, catalog: Optional[list[Path]]) -> list[Path]:
+    if catalog is not None:
+        candidates = [
+            p
+            for p in catalog
+            if is_cover_sidecar(p)
+            and release_unit_for(p, source_root) == unit
+        ]
+        return sorted(set(candidates))
+
+    if unit.is_file():
+        search_root = unit.parent
+    else:
+        search_root = unit
+    return sorted(
+        p for p in search_root.rglob("*") if p.is_file() and is_cover_sidecar(p)
+    )
+
+
+def plan_audiobook_actions(
+    files: Iterable[Path],
+    output_root: Path,
+    source_root: Path,
+    catalog: Optional[list[Path]] = None,
+) -> tuple[list[PlannedAction], list[SkippedItem], list[Path]]:
+    actions: list[PlannedAction] = []
+    skipped: list[SkippedItem] = []
+    unclassified: list[Path] = []
+
+    units: dict[Path, list[Path]] = {}
+    for path in files:
+        unit = release_unit_for(path, source_root)
+        units.setdefault(unit, []).append(path)
+
+    classified_audio: set[Path] = set()
+    for unit, unit_files in sorted(units.items(), key=lambda item: str(item[0])):
+        info = parse_audiobook_release(unit, source_root)
+        if not info:
+            unclassified.extend(unit_files)
+            continue
+
+        book_dir = output_root / audiobook_folder_name(info.author) / audiobook_folder_name(info.title)
+        for path in unit_files:
+            skip_reason = should_skip_file(path)
+            if skip_reason:
+                skipped.append(SkippedItem(path=path, reason=skip_reason))
+                continue
+
+            dest = book_dir / path.name
+            if path.resolve() == dest.resolve():
+                classified_audio.add(path)
+                continue
+
+            actions.append(
+                PlannedAction(
+                    kind="audiobook",
+                    source=path,
+                    destination=dest,
+                    reason=f"{info.author} / {info.title}",
+                )
+            )
+            classified_audio.add(path)
+
+        for cover in iter_cover_sidecars(unit, source_root, catalog):
+            dest = book_dir / cover.name
+            if cover.resolve() == dest.resolve():
+                continue
+            if any(a.source == cover for a in actions):
+                continue
+            actions.append(
+                PlannedAction(
+                    kind="cover",
+                    source=cover,
+                    destination=dest,
+                    reason=f"{info.author} / {info.title} (cover)",
+                )
+            )
+
+    for path in files:
+        if path not in classified_audio and path not in {s.path for s in skipped}:
+            if path not in unclassified:
+                unclassified.append(path)
+
+    return actions, skipped, unclassified
+
+
+def build_audiobook_plan(
+    files: list[Path],
+    source_root: Path,
+    output_root: Path,
+    catalog: Optional[list[Path]] = None,
+) -> tuple[list[PlannedAction], list[SkippedItem], list[Path]]:
+    actions, skipped, unclassified = plan_audiobook_actions(
+        files, output_root, source_root, catalog
+    )
+    return dedupe_actions(actions), skipped, unclassified
 
 
 def parse_movie_file(path: Path, library_root: Path) -> MovieInfo:
@@ -971,7 +1203,12 @@ def apply_actions(actions: list[PlannedAction]) -> None:
         action.destination.parent.mkdir(parents=True, exist_ok=True)
         if action.destination.exists():
             raise FileExistsError(f"Refusing to overwrite existing file: {action.destination}")
-        label = "MOVE" if action.kind == "move" else "SUB "
+        if action.kind == "subtitle":
+            label = "SUB "
+        elif action.kind in ("audiobook", "cover"):
+            label = "BOOK"
+        else:
+            label = "MOVE"
         print(f"{label} {action.source} -> {action.destination}")
         shutil.move(str(action.source), str(action.destination))
 
@@ -990,17 +1227,34 @@ def print_plan_summary(
     skipped: list[SkippedItem],
     unclassified: list[Path],
     output_root: Path,
+    *,
+    audiobooks_output_root: Optional[Path] = None,
+    audiobook_actions: Optional[list[PlannedAction]] = None,
+    audiobook_skipped: Optional[list[SkippedItem]] = None,
+    audiobook_unclassified: Optional[list[Path]] = None,
 ) -> None:
-    moves = [a for a in actions if a.kind == "move"]
+    video_moves = [a for a in actions if a.kind == "move"]
     subs = [a for a in actions if a.kind == "subtitle"]
+    ab_actions = audiobook_actions or []
+    ab_moves = [a for a in ab_actions if a.kind == "audiobook"]
+    ab_covers = [a for a in ab_actions if a.kind == "cover"]
 
-    print(f"Planned {len(actions)} change(s) -> {output_root}")
-    print(f"  Video moves:  {len(moves)}")
+    print(f"Planned {len(actions)} video change(s) -> {output_root}")
+    print(f"  Video moves:    {len(video_moves)}")
     print(f"  Subtitle moves: {len(subs)}")
     if skipped:
-        print(f"  Skipped:      {len(skipped)}")
+        print(f"  Skipped:        {len(skipped)}")
     if unclassified:
-        print(f"  Unclassified: {len(unclassified)}")
+        print(f"  Unclassified:   {len(unclassified)}")
+
+    if audiobooks_output_root is not None:
+        print(f"\nPlanned {len(ab_actions)} audiobook change(s) -> {audiobooks_output_root}")
+        print(f"  Audiobook moves: {len(ab_moves)}")
+        print(f"  Cover moves:     {len(ab_covers)}")
+        if audiobook_skipped:
+            print(f"  Skipped:         {len(audiobook_skipped)}")
+        if audiobook_unclassified:
+            print(f"  Unclassified:    {len(audiobook_unclassified)}")
     print()
 
     for action in actions:
@@ -1008,15 +1262,29 @@ def print_plan_summary(
         print(f"       -> {action.destination}")
         print(f"       ({action.reason})")
 
+    for action in ab_actions:
+        print(f"[{action.kind}] {action.source}")
+        print(f"       -> {action.destination}")
+        print(f"       ({action.reason})")
+
     if skipped:
-        print("\nSkipped (left untouched):")
+        print("\nSkipped video (left untouched):")
         for item in skipped:
             print(f"  {item.path}")
             print(f"    ({item.reason})")
 
-    if unclassified:
+    if audiobook_skipped:
+        print("\nSkipped audiobook (left untouched):")
+        for item in audiobook_skipped:
+            print(f"  {item.path}")
+            print(f"    ({item.reason})")
+
+    all_unclassified = list(unclassified)
+    if audiobook_unclassified:
+        all_unclassified.extend(audiobook_unclassified)
+    if all_unclassified:
         print("\nUnclassified (needs manual review):")
-        for path in unclassified:
+        for path in all_unclassified:
             print(f"  {path}")
 
 
@@ -1026,13 +1294,18 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        help="Destination library root (default: source). Use a separate dir for safer first runs.",
+        help="Destination video library root (default: source). Use a separate dir for safer first runs.",
+    )
+    parser.add_argument(
+        "--audiobooks-output",
+        type=Path,
+        help="Destination audiobook library root (Author/Book layout). Required when audiobook files are present.",
     )
     parser.add_argument(
         "--type",
-        choices=("tv", "movies", "auto"),
+        choices=("tv", "movies", "auto", "audiobooks"),
         default="auto",
-        help="Library type to organize (default: auto = try TV first, then movies)",
+        help="Library type to organize (default: auto = video TV/movies + audiobooks when outputs set)",
     )
     parser.add_argument(
         "--minimal-names",
@@ -1067,28 +1340,74 @@ def main() -> int:
         return 1
 
     output = (args.output or source).expanduser().resolve()
-    files = list(iter_video_files(source))
-    if not files:
-        print(f"No video files found under {source}")
+    video_files = list(iter_video_files(source))
+    audiobook_files = list(iter_audiobook_files(source))
+
+    if not video_files and not audiobook_files:
+        print(f"No video or audiobook files found under {source}")
         return 0
 
-    actions, skipped, unclassified = build_plan(
-        files,
-        source,
-        output,
-        library_type=args.type,
-        minimal_names=args.minimal_names,
-        keep_titles=not args.drop_titles,
-    )
+    run_video = args.type in ("tv", "movies", "auto") and video_files
+    run_audiobooks = args.type in ("audiobooks", "auto") and audiobook_files
 
-    if not actions and not skipped and not unclassified:
+    if run_audiobooks and not args.audiobooks_output:
+        print(
+            "Audiobook files found but --audiobooks-output was not set.\n"
+            "Example: --audiobooks-output ~/stuff/audiobooks",
+            file=sys.stderr,
+        )
+        return 1
+
+    video_actions: list[PlannedAction] = []
+    video_skipped: list[SkippedItem] = []
+    video_unclassified: list[Path] = []
+    if run_video:
+        video_actions, video_skipped, video_unclassified = build_plan(
+            video_files,
+            source,
+            output,
+            library_type=args.type if args.type != "audiobooks" else "auto",
+            minimal_names=args.minimal_names,
+            keep_titles=not args.drop_titles,
+        )
+
+    ab_actions: list[PlannedAction] = []
+    ab_skipped: list[SkippedItem] = []
+    ab_unclassified: list[Path] = []
+    ab_output: Optional[Path] = None
+    if run_audiobooks:
+        ab_output = args.audiobooks_output.expanduser().resolve()
+        ab_actions, ab_skipped, ab_unclassified = build_audiobook_plan(
+            audiobook_files,
+            source,
+            ab_output,
+        )
+
+    if (
+        not video_actions
+        and not video_skipped
+        and not video_unclassified
+        and not ab_actions
+        and not ab_skipped
+        and not ab_unclassified
+    ):
         print("Nothing to do — files may already match the target layout.")
         return 0
 
-    print_plan_summary(actions, skipped, unclassified, output)
+    print_plan_summary(
+        video_actions,
+        video_skipped,
+        video_unclassified,
+        output,
+        audiobooks_output_root=ab_output,
+        audiobook_actions=ab_actions,
+        audiobook_skipped=ab_skipped,
+        audiobook_unclassified=ab_unclassified,
+    )
 
+    all_actions = video_actions + ab_actions
     if args.save_plan:
-        payload = [asdict(a) | {"source": str(a.source), "destination": str(a.destination)} for a in actions]
+        payload = [asdict(a) | {"source": str(a.source), "destination": str(a.destination)} for a in all_actions]
         args.save_plan.write_text(json.dumps(payload, indent=2))
         print(f"\nWrote plan to {args.save_plan}")
 
@@ -1097,7 +1416,7 @@ def main() -> int:
         return 0
 
     try:
-        apply_actions(actions)
+        apply_actions(all_actions)
     except (FileExistsError, OSError) as exc:
         print(f"Aborted: {exc}", file=sys.stderr)
         return 1
@@ -1107,7 +1426,9 @@ def main() -> int:
         for path in removed:
             print(f"Removed empty dir: {path}")
 
-    print("\nDone. Refresh your Jellyfin library (Dashboard -> Libraries -> Scan).")
+    print("\nDone. Refresh your Jellyfin libraries (Dashboard -> Libraries -> Scan).")
+    if run_video and run_audiobooks:
+        print("Scan both /media (video) and /audiobooks (books) if configured.")
     return 0
 
 

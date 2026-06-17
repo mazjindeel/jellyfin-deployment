@@ -123,16 +123,86 @@ print_plan_summary() / apply_actions()
 ```python
 EpisodeInfo(show, season, episode, title, year=None)
 MovieInfo(title, year, relative_path=None)   # relative_path for Featurettes/
-PlannedAction(kind="move"|"subtitle", source, destination, reason)
+AudiobookInfo(author, title)
+PlannedAction(kind="move"|"subtitle"|"audiobook"|"cover", source, destination, reason)
 SkippedItem(path, reason)
 ```
 
 ### Classification order (`--type auto`)
 
-1. Each video file is tried as **TV** (`parse_tv_file`, then `parse_tv_extras_file`).
-2. Remaining videos are tried as **movies** (`parse_movie_file`).
+Files are partitioned **by extension** first — no filename-keyword guessing:
+
+1. **Audiobook extensions** (`.m4b`, `.mp3`, `.m4a`, `.aac`, `.flac`, `.opus`) → audiobook planning when `--audiobooks-output` is set.
+2. **Video extensions** → TV then movies (existing pipeline).
 3. Files matching `should_skip_*` are recorded in `skipped`.
 4. Anything else is `unclassified` (printed for manual review).
+
+Video classification (unchanged):
+
+1. Each video file is tried as **TV** (`parse_tv_file`, then `parse_tv_extras_file`).
+2. Remaining videos are tried as **movies** (`parse_movie_file`).
+
+---
+
+## Audiobooks
+
+Target layout at `~/stuff/audiobooks` (Jellyfin container path `/audiobooks`):
+
+```txt
+Author Name/
+  Book Title/
+    Book Title.m4b          # single-file
+    01 - Chapter.mp3        # multi-chapter (original names preserved)
+    cover.jpg               # optional sidecar
+```
+
+No extra top-level `Audiobooks/` folder — the mount root is already audiobooks-only.
+
+### Release units
+
+Each **immediate child** of the source directory is one release:
+
+- A subfolder (e.g. `Andy Weir - 2021 - Project Hail Mary (Sci-Fi)/`)
+- A loose file at the source root (e.g. `Title by Author.m4b`)
+
+All audio files within a release unit land in the same `{Author}/{Book}/` folder.
+
+### Author/title parsing (priority)
+
+1. Nested `Author/Book/` in the release tree
+2. **` by Author`** suffix (Matt Dinniman `.m4b` pattern)
+3. **`Author - YYYY - Title`** folder (Andy Weir pattern)
+4. Generic ` - ` split
+5. **Unclassified** if nothing parses
+
+Strips `(Audiobook)`, `(Fiction)`, `(Sci-Fi)`, series index parens like `(Dungeon Crawler Carl 01)`, and quality tags.
+
+### CLI
+
+```bash
+# Completed downloads → dual libraries (dry-run)
+python3 scripts/organize-media.py ~/stuff/downloads/completed \
+  --output ~/stuff/media \
+  --audiobooks-output ~/stuff/audiobooks
+
+# Apply
+python3 scripts/organize-media.py ~/stuff/downloads/completed \
+  --output ~/stuff/media \
+  --audiobooks-output ~/stuff/audiobooks \
+  --apply --cleanup-empty
+```
+
+### Extension guide — new audiobook pattern
+
+Edit `parse_audiobook_from_label()` in [`organize-media.py`](organize-media.py). Add test paths to [`fixtures/audiobook-paths.txt`](fixtures/audiobook-paths.txt) and run:
+
+```bash
+python3 scripts/simulate-from-paths.py scripts/fixtures/audiobook-paths.txt
+```
+
+### Jellyfin metadata
+
+Books libraries use **embedded audio tags** (not online scrapers). Requires the **Bookshelf** plugin. If titles sort under `#` in the sidebar, set **Sort Title** in file tags.
 
 ---
 
@@ -297,6 +367,6 @@ After script changes, re-run simulation and update the review doc (or ask an age
 
 ## Jellyfin after organizing
 
-1. Dashboard → Libraries → **Scan All Libraries** (or scan the `/media` library).
+1. Dashboard → Libraries → **Scan** the `/media` library (video) and `/audiobooks` library (books) if both were updated.
 2. If folders were consolidated (Billions, SEAL Team, Avatar), you may need to remove duplicate/old library entries or let Jellyfin merge on scan.
 3. Fix any remaining metadata mismatches in the Jellyfin UI — this script only handles paths and filenames.

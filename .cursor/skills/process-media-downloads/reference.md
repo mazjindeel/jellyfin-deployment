@@ -7,7 +7,8 @@
 | `~/stuff/downloads/completed/` | Transmission finished torrents (source for this workflow) |
 | `~/stuff/downloads/incomplete/` | Active downloads — do not organize |
 | `~/stuff/downloads/watch/` | Watch folder — do not organize |
-| `~/stuff/media/` | Jellyfin library root |
+| `~/stuff/media/` | Jellyfin video library root (container `/media`) |
+| `~/stuff/audiobooks/` | Jellyfin audiobook library root (container `/audiobooks`) |
 | `~/homelab/jellyfin-deployment/` | Deployment repo (script lives here) |
 | `transmission-vpn` container | Transmission + VPN; RPC on port 9091 |
 
@@ -21,19 +22,26 @@ Use this when presenting Phase 4 results:
 ### Completed downloads dry-run
 
 **Source:** `~/stuff/downloads/completed`
-**Destination:** `~/stuff/media`
+**Video destination:** `~/stuff/media`
+**Audiobook destination:** `~/stuff/audiobooks`
 **Script:** `organize-media.py` @ `{sha or mtime}`
 
 | Metric | Count |
 |--------|------:|
 | Video moves | {N} |
 | Subtitle moves | {N} |
+| Audiobook moves | {N} |
+| Cover moves | {N} |
 | Conflicts | {N} ⚠️ must be 0 |
 | Skipped | {N} |
 | Unclassified | {N} |
 
-#### Sample moves
+#### Sample video moves
 - `{source}` → `{dest}` ({reason})
+- …
+
+#### Sample audiobook moves
+- `{release}` → `{Author}/{Book}/` ({reason})
 - …
 
 #### Unclassified (needs decision)
@@ -51,7 +59,7 @@ Use this when presenting Phase 4 results:
 Inventory completed/
        │
        ▼
-Dry-run (--output ~/stuff/media)
+Dry-run (--output ~/stuff/media --audiobooks-output ~/stuff/audiobooks)
        │
        ├── conflicts > 0 ──► STOP — show conflicting paths; human resolves duplicates manually
        │
@@ -63,12 +71,12 @@ Dry-run (--output ~/stuff/media)
                  │
                  ├── remove torrents (--remove-and-delete)
                  │
-                 └── Jellyfin library scan
+                 └── Jellyfin library scan (/media + /audiobooks)
 ```
 
 ## Transmission cleanup (Phase 7)
 
-After a successful apply, **always** remove the processed torrents. Videos are in `~/stuff/media`; leftover `.nfo`, `Screens/`, and empty folders stay in `completed/` until the torrent is removed.
+After a successful apply, **always** remove the processed torrents. Videos are in `~/stuff/media`, audiobooks in `~/stuff/audiobooks`; leftover `.nfo`, `Screens/`, and empty folders stay in `completed/` until the torrent is removed.
 
 ```bash
 # List torrents
@@ -113,6 +121,7 @@ Repo: `vpn-transmission-deployment` — see its README for deploy details.
 | Miniseries without SxxEyy | Add `_EPISODE_PATTERNS` entry or `parse_tv_file` branch |
 | Wrong show folder | `canonicalize_show_metadata()` rule |
 | File under `Extras/` without episode code | `parse_tv_extras_file()` → Season 00 |
+| Audiobook with unparseable release name | `parse_audiobook_from_label()` rule or manual move |
 | Duplicate rips same episode | Manual — script does not dedupe |
 
 ## Troubleshooting
@@ -164,9 +173,10 @@ Expect 0 conflicts before recommending in-place `--apply` on the full library.
 
 ## Jellyfin after apply
 
-1. Dashboard → Libraries → scan the `/media` library
-2. If show folders were consolidated, old duplicate entries may need removal in Jellyfin UI
-3. Metadata/posters are **not** handled by the script — fix in Jellyfin if needed
+1. Dashboard → Libraries → scan the `/media` library (video)
+2. Dashboard → Libraries → scan the `/audiobooks` library (books)
+3. If show folders were consolidated, old duplicate entries may need removal in Jellyfin UI
+4. Metadata/posters are **not** handled by the script — fix in Jellyfin if needed
 
 ## Symlink setup (dev machine)
 

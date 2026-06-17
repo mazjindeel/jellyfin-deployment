@@ -13,6 +13,7 @@ services:
       - ${HOMELAB_DATA:-/home/maz/homelab/data/jellyfin}/config:/config
       - ${HOMELAB_DATA:-/home/maz/homelab/data/jellyfin}/cache:/cache
       - ${MEDIA_PATH:-/home/maz/stuff/media}:/media:ro
+      - ${AUDIOBOOKS_PATH:-/home/maz/stuff/audiobooks}:/audiobooks:ro
     environment:
       TZ: ${TZ:-America/Anchorage}
 
