@@ -80,10 +80,10 @@ After a successful apply, **always** remove the processed torrents. Videos are i
 
 ```bash
 # List torrents
-ssh maz@192.168.1.50 'docker exec transmission-vpn transmission-remote -l'
+ssh maz@192.168.63.2 'docker exec transmission-vpn transmission-remote -l'
 
 # Remove by ID — deletes torrent entry AND data under completed/
-ssh maz@192.168.1.50 'docker exec transmission-vpn transmission-remote -t 1,2,3 --remove-and-delete'
+ssh maz@192.168.63.2 'docker exec transmission-vpn transmission-remote -t 1,2,3 --remove-and-delete'
 ```
 
 Match torrent names to the folders from the apply log. Do **not** remove torrents before apply completes (you would delete files that were not yet moved to the library).
@@ -143,7 +143,7 @@ Cross-device `shutil.move` copies then deletes source. If source is root-owned, 
 ### Script on ThinkPad stale vs dev
 
 ```bash
-ssh maz@192.168.1.50 'head -3 ~/homelab/jellyfin-deployment/scripts/organize-media.py'
+ssh maz@192.168.63.2 'head -3 ~/homelab/jellyfin-deployment/scripts/organize-media.py'
 head -3 ~/workspace/jellyfin-deployment/scripts/organize-media.py
 ```
 
@@ -164,7 +164,7 @@ python3 scripts/simulate-from-paths.py /tmp/test-paths.txt
 When the on-disk library changes materially:
 
 ```bash
-ssh maz@192.168.1.50 'find ~/stuff/media -print | sort' > ~/workspace/jellyfin-deployment/final_list.txt
+ssh maz@192.168.63.2 'find ~/stuff/media -print | sort' > ~/workspace/jellyfin-deployment/final_list.txt
 cd ~/workspace/jellyfin-deployment
 python3 scripts/simulate-from-paths.py final_list.txt --save-plan /tmp/full-plan.json
 ```

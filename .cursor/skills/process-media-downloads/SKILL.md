@@ -20,7 +20,7 @@ Read first: [scripts/README.md](../../scripts/README.md) (CLI, architecture, ext
 
 | | |
 |---|---|
-| ThinkPad SSH | `maz@192.168.1.50` |
+| ThinkPad SSH | `maz@192.168.63.2` |
 | Completed downloads | `~/stuff/downloads/completed/` |
 | Jellyfin video library | `~/stuff/media/` (container `/media`) |
 | Jellyfin audiobook library | `~/stuff/audiobooks/` (container `/audiobooks`) |
@@ -56,9 +56,9 @@ Post-apply cleanup in `completed/` and Transmission removal **is part of the app
 On ThinkPad, list what arrived:
 
 ```bash
-ssh maz@192.168.1.50 'find ~/stuff/downloads/completed -type f \( -iname "*.mkv" -o -iname "*.mp4" -o -iname "*.avi" -o -iname "*.m4v" -o -iname "*.srt" -o -iname "*.m4b" -o -iname "*.mp3" -o -iname "*.m4a" -o -iname "*.flac" -o -iname "*.aac" \) -print | head -200'
-ssh maz@192.168.1.50 'du -sh ~/stuff/downloads/completed/* 2>/dev/null | sort -hr | head -30'
-ssh maz@192.168.1.50 'ls -la ~/stuff/downloads/completed/'
+ssh maz@192.168.63.2 'find ~/stuff/downloads/completed -type f \( -iname "*.mkv" -o -iname "*.mp4" -o -iname "*.avi" -o -iname "*.m4v" -o -iname "*.srt" -o -iname "*.m4b" -o -iname "*.mp3" -o -iname "*.m4a" -o -iname "*.flac" -o -iname "*.aac" \) -print | head -200'
+ssh maz@192.168.63.2 'du -sh ~/stuff/downloads/completed/* 2>/dev/null | sort -hr | head -30'
+ssh maz@192.168.63.2 'ls -la ~/stuff/downloads/completed/'
 ```
 
 Summarize for the human: folder names, video count, audiobook count, anything that looks non-media (archives, nfo-only, samples). Note if folders are `root:root` (Transmission missing `PUID`/`PGID` — see [reference.md](reference.md)).
@@ -72,13 +72,13 @@ cd ~/workspace/home-server
 ./scripts/pull-on-thinkpad.sh main jellyfin-deployment   # after push, if committed
 # or one-off:
 scp ~/workspace/jellyfin-deployment/scripts/organize-media.py \
-  maz@192.168.1.50:~/homelab/jellyfin-deployment/scripts/
+  maz@192.168.63.2:~/homelab/jellyfin-deployment/scripts/
 ```
 
 Confirm ThinkPad has the expected script:
 
 ```bash
-ssh maz@192.168.1.50 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py --help | head -5'
+ssh maz@192.168.63.2 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py --help | head -5'
 ```
 
 ### Phase 3 — Dry-run
@@ -86,7 +86,7 @@ ssh maz@192.168.1.50 'python3 ~/homelab/jellyfin-deployment/scripts/organize-med
 **Always dry-run first.** Source = completed; destinations = video + audiobook libraries:
 
 ```bash
-ssh maz@192.168.1.50 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py \
+ssh maz@192.168.63.2 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py \
   ~/stuff/downloads/completed \
   --output ~/stuff/media \
   --audiobooks-output ~/stuff/audiobooks \
@@ -97,8 +97,8 @@ ssh maz@192.168.1.50 'python3 ~/homelab/jellyfin-deployment/scripts/organize-med
 Copy artifacts for local review if helpful:
 
 ```bash
-scp maz@192.168.1.50:~/stuff/downloads/completed-plan.json /tmp/
-scp maz@192.168.1.50:~/stuff/downloads/completed-dry-run.log /tmp/
+scp maz@192.168.63.2:~/stuff/downloads/completed-plan.json /tmp/
+scp maz@192.168.63.2:~/stuff/downloads/completed-dry-run.log /tmp/
 ```
 
 ### Phase 4 — Review plan with human
@@ -147,13 +147,13 @@ Only after human approval.
 If completed folders are `root:root`, fix ownership before apply (or set `PUID`/`PGID` on Transmission — see reference):
 
 ```bash
-ssh maz@192.168.1.50 'sudo chown -R maz:maz ~/stuff/downloads/completed/'
+ssh maz@192.168.63.2 'sudo chown -R maz:maz ~/stuff/downloads/completed/'
 ```
 
 Apply:
 
 ```bash
-ssh maz@192.168.1.50 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py \
+ssh maz@192.168.63.2 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py \
   ~/stuff/downloads/completed \
   --output ~/stuff/media \
   --audiobooks-output ~/stuff/audiobooks \
@@ -171,9 +171,9 @@ On failure (`FileExistsError`, `OSError`): stop, show log, do not retry apply wi
 Map apply log / inventory folder names to torrent IDs, then remove:
 
 ```bash
-ssh maz@192.168.1.50 'docker exec transmission-vpn transmission-remote -l'
+ssh maz@192.168.63.2 'docker exec transmission-vpn transmission-remote -l'
 # Remove by ID (comma-separated). --remove-and-delete drops torrent + data on disk.
-ssh maz@192.168.1.50 'docker exec transmission-vpn transmission-remote -t {ids} --remove-and-delete'
+ssh maz@192.168.63.2 'docker exec transmission-vpn transmission-remote -t {ids} --remove-and-delete'
 ```
 
 This clears `.nfo`, `Screens/`, and empty release folders left after video moves.
@@ -181,8 +181,8 @@ This clears `.nfo`, `Screens/`, and empty release folders left after video moves
 **2. Verify `completed/` is clean:**
 
 ```bash
-ssh maz@192.168.1.50 'find ~/stuff/downloads/completed -type f \( -iname "*.mkv" -o -iname "*.mp4" \) | wc -l'
-ssh maz@192.168.1.50 'ls -la ~/stuff/downloads/completed/'
+ssh maz@192.168.63.2 'find ~/stuff/downloads/completed -type f \( -iname "*.mkv" -o -iname "*.mp4" \) | wc -l'
+ssh maz@192.168.63.2 'ls -la ~/stuff/downloads/completed/'
 ```
 
 Non-zero video count means unclassified items or partial apply failure.
@@ -194,8 +194,8 @@ Non-zero video count means unclassified items or partial apply failure.
 Separate from new downloads — reorganize existing `~/stuff/media` without touching completed:
 
 ```bash
-ssh maz@192.168.1.50 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py ~/stuff/media'
-ssh maz@192.168.1.50 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py ~/stuff/media --apply --cleanup-empty'
+ssh maz@192.168.63.2 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py ~/stuff/media'
+ssh maz@192.168.63.2 'python3 ~/homelab/jellyfin-deployment/scripts/organize-media.py ~/stuff/media --apply --cleanup-empty'
 ```
 
 Same dry-run → approve → apply gate applies. No Transmission cleanup (source is the library, not completed).

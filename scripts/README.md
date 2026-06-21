@@ -146,7 +146,7 @@ Video classification (unchanged):
 
 ## Audiobooks
 
-Target layout at `~/stuff/audiobooks` (Jellyfin container path `/audiobooks`):
+Target layout at `~/stuff/audiobooks` (Jellyfin container path `/audiobooks`; Audiobookshelf container path `/audiobooks`):
 
 ```txt
 Author Name/
@@ -155,6 +155,8 @@ Author Name/
     01 - Chapter.mp3        # multi-chapter (original names preserved)
     cover.jpg               # optional sidecar
 ```
+
+**Listening platform:** [Audiobookshelf](https://www.audiobookshelf.org/) on the homelab (`https://audiobooks.mazjindeel.com` over VPN/LAN). This script feeds the same directory; optimize layout for ABS, not Jellyfin Books. See [AUDIOBOOK-PLATFORM-PLAN.md](../../home-server/docs/AUDIOBOOK-PLATFORM-PLAN.md).
 
 No extra top-level `Audiobooks/` folder — the mount root is already audiobooks-only.
 
@@ -202,7 +204,7 @@ python3 scripts/simulate-from-paths.py scripts/fixtures/audiobook-paths.txt
 
 ### Jellyfin metadata
 
-Books libraries use **embedded audio tags** (not online scrapers). Requires the **Bookshelf** plugin. If titles sort under `#` in the sidebar, set **Sort Title** in file tags.
+Books libraries use **embedded audio tags** (not online scrapers). Requires the **Bookshelf** plugin. Jellyfin Books is optional for browsing; use Audiobookshelf for mobile listening ([plan](../../home-server/docs/AUDIOBOOK-PLATFORM-PLAN.md)). If titles sort under `#` in the sidebar, set **Sort Title** in file tags.
 
 ---
 
@@ -367,6 +369,6 @@ After script changes, re-run simulation and update the review doc (or ask an age
 
 ## Jellyfin after organizing
 
-1. Dashboard → Libraries → **Scan** the `/media` library (video) and `/audiobooks` library (books) if both were updated.
+1. Dashboard → Libraries → **Scan** the `/media` library (video). Scan `/audiobooks` only if you still use Jellyfin Books for browsing.
 2. If folders were consolidated (Billions, SEAL Team, Avatar), you may need to remove duplicate/old library entries or let Jellyfin merge on scan.
 3. Fix any remaining metadata mismatches in the Jellyfin UI — this script only handles paths and filenames.
